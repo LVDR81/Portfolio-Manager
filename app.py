@@ -18,8 +18,8 @@ tab1, tab2 = st.tabs(["⚖️ Optimizador de Portafolio", "🔍 Screener de Acci
 with tab1:
     st.header("Optimización de Portafolio (Teoría de Markowitz)")
     
-    # Inputs del usuario en la barra lateral de esta pestaña
-    col_input1, col_input2 = st.columns([1, 2])
+    # Inputs del usuario
+    col_input1, col_input2 = st.columns()
     with col_input1:
         tickers_input = st.text_input("Ingresa los Tickers separados por coma:", "AAPL, MSFT, GOOGL, AMZN, JPM")
         tickers = [t.strip().upper() for t in tickers_input.split(",")]
@@ -30,9 +30,21 @@ with tab1:
     if st.button("🚀 Ejecutar Optimización"):
         with st.spinner("Descargando datos y simulando portafolios..."):
             try:
-                # Descarga de datos
-                datos = yf.download(tickers, period="3y")["Adj Close"]
-                retornos_diarios = datos.pct_change().dropna()
+                # SOLUCIÓN AL ERROR: Forzamos la descarga limpia sin MultiIndex y desactivamos el auto_adjust
+                datos = yf.download(tickers, period="3y", auto_adjust=False, multi_level_index=False)
+                
+                # Si solo se pone un ticker, yfinance devuelve una estructura simple. 
+                # Si se ponen varios, buscamos 'Adj Close'. Si no existe por algún motivo, usamos 'Close'.
+                if "Adj Close" in datos.columns:
+                    precios = datos["Adj Close"]
+                else:
+                    precios = datos["Close"]
+                
+                # Manejo especial por si es un único ticker (Pandas lo descarga como Series, lo pasamos a DataFrame)
+                if isinstance(precios, pd.Series):
+                    precios = precios.to_frame(name=tickers[0])
+
+                retornos_diarios = precios.pct_change().dropna()
                 retornos_anuales = retornos_diarios.mean() * 252
                 matriz_covarianza = retornos_diarios.cov() * 252
 
@@ -104,7 +116,7 @@ with tab1:
                 st.dataframe(pesos_df, use_container_width=True)
 
             except Exception as e:
-                st.error(f"Error al procesar los tickers: {e}. Asegúrate de escribir tickers válidos de Yahoo Finance.")
+                st.error(f"Error en los datos financieros: {e}. Intenta con otra combinación de tickers o verifica la conexión.")
 
 # ==========================================
 # PESTAÑA 2: SCREENER DE ACCIONES
@@ -113,10 +125,8 @@ with tab2:
     st.header("🔍 Buscador y Filtro de Acciones (Screener)")
     st.write("Filtra rápidamente una lista predefinida de empresas según sus fundamentales.")
     
-    # Lista por defecto para el screener (puedes ampliarla)
-    screener_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "JPM", "V", "DIS", "NFLX", "AMD"]
+    screener_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "JPM", "V", "DIS", "NFLX", "AMD"]
     
-    # Controles de filtrado interactivo
     col_f1, col_f2, col_f3 = st.columns(3)
     with col_f1:
         max_pe = st.slider("Ratio P/E Máximo (Trailing)", 10, 100, 40, step=5)
@@ -151,20 +161,21 @@ with tab2:
             
             df_screener = pd.DataFrame(datos_screener)
             
-            # Aplicar Filtros de usuario
-            df_filtrado = df_screener[
-                (df_screener["Trailing P/E"] <= max_pe) | (df_screener["Trailing P/E"].isna())
-            ]
-            df_filtrado = df_filtrado[df_filtrado["Dividend Yield (%)"] >= min_div]
-            
-            # Ordenar
-            ascendente = True if ordenar_por == "Trailing P/E" else False
-            df_filtrado = df_filtrado.sort_values(by=ordenar_por, ascending=ascendente)
-            
-            st.subheader(f"📋 Acciones que cumplen tus criterios ({len(df_filtrado)} encontradas)")
-            st.dataframe(df_filtrado.style.format({
-                "Precio": "${:.2f}",
-                "Trailing P/E": "{:.2f}",
-                "Dividend Yield (%)": "{:.2f}%",
-                "Margen Operativo (%)": "{:.2f}%"
-            }), use_container_width=True)
+            if not df_screener.empty:
+                df_filtrado = df_screener[
+                    (df_screener["Trailing P/E"] <= max_pe) | (df_screener["Trailing P/E"].isna())
+                ]
+                df_filtrado = df_filtrado[df_filtrado["Dividend Yield (%)"] >= min_div]
+                
+                ascendente = True if ordenar_por == "Trailing P/E" else False
+                df_filtrado = df_filtrado.sort_values(by=ordenar_por, ascending=ascendente)
+                
+                st.subheader(f"📋 Acciones que cumplen tus criterios ({len(df_filtrado)} encontradas)")
+                st.dataframe(df_filtrado.style.format({
+                    "Precio": "${:.2f}",
+                    "Trailing P/E": "{:.2f}",
+                    "Dividend Yield (%)": "{:.2f}%",
+                    "Margen Operativo (%)": "{:.2f}%"
+                }), use_container_width=True)
+            else:
+                st.warning("No se pudieron recopilar datos en este momento. Inténtalo de nuevo en unos minutos.")
