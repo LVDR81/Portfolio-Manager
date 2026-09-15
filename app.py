@@ -19,7 +19,7 @@ with tab1:
     st.header("Optimización de Portafolio (Teoría de Markowitz)")
     
     # Inputs del usuario
-    col_input1, col_input2 = st.columns()
+    col_input1, col_input2 = st.columns(2)
     with col_input1:
         tickers_input = st.text_input("Ingresa los Tickers separados por coma:", "AAPL, MSFT, GOOGL, AMZN, JPM")
         tickers = [t.strip().upper() for t in tickers_input.split(",")]
